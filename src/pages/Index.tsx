@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { MapPin, Users, BarChart3 } from 'lucide-react';
+import { SAMPLE_REPRESENTATIVES } from '@/data/sample-data';
 import { CSVImport } from '@/components/CSVImport';
 import { CoverageMap } from '@/components/CoverageMap';
 import { FiltersPanel } from '@/components/FiltersPanel';
@@ -8,7 +9,7 @@ import { GapExport } from '@/components/GapExport';
 import type { Representative } from '@/types/representative';
 
 export default function Index() {
-  const [representatives, setRepresentatives] = useState<Representative[]>([]);
+  const [representatives, setRepresentatives] = useState<Representative[]>(SAMPLE_REPRESENTATIVES);
   const [selectedState, setSelectedState] = useState('all');
   const [selectedRep, setSelectedRep] = useState('all');
 

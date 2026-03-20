@@ -1,4 +1,4 @@
-import { MapContainer, TileLayer, Circle, Marker, Popup } from 'react-leaflet';
+import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import type { Representative } from '@/types/representative';
 import { ZONE_COLORS } from '@/lib/geo-utils';
@@ -16,61 +16,89 @@ interface CoverageMapProps {
 }
 
 export function CoverageMap({ representatives }: CoverageMapProps) {
-  const repsWithCoords = representatives.filter(r => r.lat != null && r.lng != null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
 
-  return (
-    <MapContainer
-      center={[-14.235, -51.9253]}
-      zoom={4}
-      className="h-full w-full rounded-lg"
-      scrollWheelZoom
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      {repsWithCoords.map((rep) => (
-        <RepresentativeMarker key={rep.codigo} rep={rep} />
-      ))}
-    </MapContainer>
-  );
-}
+  useEffect(() => {
+    if (!mapRef.current) return;
 
-function RepresentativeMarker({ rep }: { rep: Representative }) {
-  if (rep.lat == null || rep.lng == null) return null;
-  const pos: [number, number] = [rep.lat, rep.lng];
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = L.map(mapRef.current).setView([-14.235, -51.9253], 4);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(mapInstanceRef.current);
 
-  return (
-    <>
-      {/* Zona de Abandono > 300km */}
-      <Circle
-        center={pos}
-        radius={300000}
-        pathOptions={{ color: ZONE_COLORS.abandono, fillColor: ZONE_COLORS.abandono, fillOpacity: 0.06, weight: 1 }}
-      />
-      {/* Atendimento Híbrido 150-300km */}
-      <Circle
-        center={pos}
-        radius={300000}
-        pathOptions={{ color: ZONE_COLORS.hibrido, fillColor: ZONE_COLORS.hibrido, fillOpacity: 0.1, weight: 1 }}
-      />
-      {/* Atendimento Presencial ≤ 150km */}
-      <Circle
-        center={pos}
-        radius={150000}
-        pathOptions={{ color: ZONE_COLORS.presencial, fillColor: ZONE_COLORS.presencial, fillOpacity: 0.18, weight: 1.5 }}
-      />
-      <Marker position={pos}>
-        <Popup>
-          <div className="space-y-1 text-sm">
-            <p className="font-semibold">{rep.nome}</p>
-            <p className="text-muted-foreground">{rep.cidade}, {rep.estado}</p>
-            {rep.telefone && <p>📞 {rep.telefone}</p>}
-            {rep.email && <p>✉️ {rep.email}</p>}
-            {rep.observacoes && <p className="italic text-xs">{rep.observacoes}</p>}
-          </div>
-        </Popup>
-      </Marker>
-    </>
-  );
+      // Fix map size after mount
+      setTimeout(() => {
+        mapInstanceRef.current?.invalidateSize();
+      }, 100);
+    }
+
+    const map = mapInstanceRef.current;
+
+    // Clear existing layers (except tile layer)
+    map.eachLayer((layer) => {
+      if (!(layer instanceof L.TileLayer)) {
+        map.removeLayer(layer);
+      }
+    });
+
+    const repsWithCoords = representatives.filter(r => r.lat != null && r.lng != null);
+
+    for (const rep of repsWithCoords) {
+      const pos: L.LatLngExpression = [rep.lat!, rep.lng!];
+
+      // Zona de Abandono > 300km
+      L.circle(pos, {
+        radius: 300000,
+        color: ZONE_COLORS.abandono,
+        fillColor: ZONE_COLORS.abandono,
+        fillOpacity: 0.06,
+        weight: 1,
+      }).addTo(map);
+
+      // Atendimento Híbrido 150-300km  
+      L.circle(pos, {
+        radius: 300000,
+        color: ZONE_COLORS.hibrido,
+        fillColor: ZONE_COLORS.hibrido,
+        fillOpacity: 0.1,
+        weight: 1,
+      }).addTo(map);
+
+      // Atendimento Presencial ≤ 150km
+      L.circle(pos, {
+        radius: 150000,
+        color: ZONE_COLORS.presencial,
+        fillColor: ZONE_COLORS.presencial,
+        fillOpacity: 0.18,
+        weight: 1.5,
+      }).addTo(map);
+
+      // Marker
+      const marker = L.marker(pos).addTo(map);
+      marker.bindPopup(`
+        <div style="font-size:13px;">
+          <strong>${rep.nome}</strong><br/>
+          <span style="color:#666;">${rep.cidade}, ${rep.estado}</span><br/>
+          ${rep.telefone ? `📞 ${rep.telefone}<br/>` : ''}
+          ${rep.email ? `✉️ ${rep.email}<br/>` : ''}
+          ${rep.observacoes ? `<em style="font-size:11px;">${rep.observacoes.split('|')[0].trim()}</em>` : ''}
+        </div>
+      `);
+    }
+
+    return () => {};
+  }, [representatives]);
+
+  useEffect(() => {
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  return <div ref={mapRef} className="h-full w-full rounded-lg" />;
 }
