@@ -27,6 +27,11 @@ export function CoverageMap({ representatives }: CoverageMapProps) {
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(mapInstanceRef.current);
+
+      // Fix map size after mount
+      setTimeout(() => {
+        mapInstanceRef.current?.invalidateSize();
+      }, 100);
     }
 
     const map = mapInstanceRef.current;
