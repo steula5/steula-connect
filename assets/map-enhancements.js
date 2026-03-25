@@ -9,6 +9,7 @@
     selectedName: null,
     highlightLayer: null,
     lineLayer: null,
+    distanceLabelLayer: null,
     cepMarkerLayer: null,
     markerHooksDone: false,
     csvHookInstalled: false,
@@ -61,6 +62,19 @@
     return state.map;
   }
 
+  function formatDistanceKm(fromLatLng, toCoords) {
+    const from = window.L.latLng(fromLatLng.lat, fromLatLng.lng);
+    const to = window.L.latLng(toCoords.lat, toCoords.lng);
+    const distanceMeters = from.distanceTo(to);
+    const distanceKm = distanceMeters / 1000;
+
+    if (distanceKm < 10) {
+      return `${distanceKm.toFixed(1)} km`;
+    }
+
+    return `${Math.round(distanceKm)} km`;
+  }
+
   function drawSelection() {
     const map = getMap();
     if (!map) return;
@@ -83,11 +97,21 @@
         .bindPopup('Cliente (CEP destinatário)');
     }
 
-    if (!state.selectedLatLng) return;
-
     if (state.highlightLayer) {
       map.removeLayer(state.highlightLayer);
     }
+
+    if (state.lineLayer) {
+      map.removeLayer(state.lineLayer);
+      state.lineLayer = null;
+    }
+
+    if (state.distanceLabelLayer) {
+      map.removeLayer(state.distanceLabelLayer);
+      state.distanceLabelLayer = null;
+    }
+
+    if (!state.selectedLatLng) return;
 
     state.highlightLayer = window.L.circleMarker(state.selectedLatLng, {
       radius: 11,
@@ -97,17 +121,12 @@
       fillOpacity: 1,
     }).addTo(map);
 
-    if (state.lineLayer) {
-      map.removeLayer(state.lineLayer);
-      state.lineLayer = null;
-    }
-
     if (state.cepCoords) {
+      const from = [state.selectedLatLng.lat, state.selectedLatLng.lng];
+      const to = [state.cepCoords.lat, state.cepCoords.lng];
+
       state.lineLayer = window.L.polyline(
-        [
-          [state.selectedLatLng.lat, state.selectedLatLng.lng],
-          [state.cepCoords.lat, state.cepCoords.lng],
-        ],
+        [from, to],
         {
           color: '#ef4444',
           weight: 3,
@@ -115,6 +134,20 @@
           dashArray: '8,8',
         }
       ).addTo(map);
+
+      const midLat = (from[0] + to[0]) / 2;
+      const midLng = (from[1] + to[1]) / 2;
+      const distanceText = formatDistanceKm(state.selectedLatLng, state.cepCoords);
+
+      state.distanceLabelLayer = window.L.marker([midLat, midLng], {
+        interactive: false,
+        icon: window.L.divIcon({
+          className: '',
+          html: `<div style="padding:2px 8px;border-radius:9999px;background:#ffffff;border:1px solid #ef4444;color:#ef4444;font-size:12px;font-weight:700;white-space:nowrap;">${distanceText}</div>`,
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+        }),
+      }).addTo(map);
     }
 
     focusMapOnSelection();
