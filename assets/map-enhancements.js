@@ -9,7 +9,6 @@
     selectedName: null,
     highlightLayer: null,
     lineLayer: null,
-    distanceLabelLayer: null,
     cepMarkerLayer: null,
     markerHooksDone: false,
     csvHookInstalled: false,
@@ -106,11 +105,6 @@
       state.lineLayer = null;
     }
 
-    if (state.distanceLabelLayer) {
-      map.removeLayer(state.distanceLabelLayer);
-      state.distanceLabelLayer = null;
-    }
-
     if (!state.selectedLatLng) return;
 
     state.highlightLayer = window.L.circleMarker(state.selectedLatLng, {
@@ -124,6 +118,7 @@
     if (state.cepCoords) {
       const from = [state.selectedLatLng.lat, state.selectedLatLng.lng];
       const to = [state.cepCoords.lat, state.cepCoords.lng];
+      const distanceText = formatDistanceKm(state.selectedLatLng, state.cepCoords);
 
       state.lineLayer = window.L.polyline(
         [from, to],
@@ -133,21 +128,13 @@
           opacity: 0.95,
           dashArray: '8,8',
         }
-      ).addTo(map);
+      )
+        .addTo(map)
+        .bindPopup(`<strong>Distância estimada:</strong> ${distanceText}`);
 
-      const midLat = (from[0] + to[0]) / 2;
-      const midLng = (from[1] + to[1]) / 2;
-      const distanceText = formatDistanceKm(state.selectedLatLng, state.cepCoords);
-
-      state.distanceLabelLayer = window.L.marker([midLat, midLng], {
-        interactive: false,
-        icon: window.L.divIcon({
-          className: '',
-          html: `<div style="padding:2px 8px;border-radius:9999px;background:#ffffff;border:1px solid #ef4444;color:#ef4444;font-size:12px;font-weight:700;white-space:nowrap;">${distanceText}</div>`,
-          iconSize: [0, 0],
-          iconAnchor: [0, 0],
-        }),
-      }).addTo(map);
+      state.lineLayer.on('click', function (ev) {
+        state.lineLayer.openPopup(ev.latlng);
+      });
     }
 
     focusMapOnSelection();
