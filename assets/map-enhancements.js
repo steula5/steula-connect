@@ -119,6 +119,9 @@
       const from = [state.selectedLatLng.lat, state.selectedLatLng.lng];
       const to = [state.cepCoords.lat, state.cepCoords.lng];
       const distanceText = formatDistanceKm(state.selectedLatLng, state.cepCoords);
+      const midLat = (from[0] + to[0]) / 2;
+      const midLng = (from[1] + to[1]) / 2;
+      const midpoint = window.L.latLng(midLat, midLng);
 
       state.lineLayer = window.L.polyline(
         [from, to],
@@ -135,6 +138,12 @@
       state.lineLayer.on('click', function (ev) {
         state.lineLayer.openPopup(ev.latlng);
       });
+
+      window.setTimeout(() => {
+        if (state.lineLayer) {
+          state.lineLayer.openPopup(midpoint);
+        }
+      }, 180);
     }
 
     focusMapOnSelection();
