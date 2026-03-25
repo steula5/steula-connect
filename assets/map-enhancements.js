@@ -10,10 +10,12 @@
     highlightLayer: null,
     lineLayer: null,
     cepMarkerLayer: null,
+    selectionSource: null,
     markerHooksDone: false,
     csvHookInstalled: false,
     csvRestoreAttempted: false,
     lastGeoRestoreAttempted: false,
+    layoutStyleInjected: false,
   };
 
   function readStoredLastGeo() {
@@ -139,12 +141,16 @@
         state.lineLayer.openPopup(ev.latlng);
       });
 
-      window.setTimeout(() => {
-        if (state.lineLayer) {
-          state.lineLayer.openPopup(midpoint);
-        }
-      }, 180);
+      if (state.selectionSource !== 'marker') {
+        window.setTimeout(() => {
+          if (state.lineLayer) {
+            state.lineLayer.openPopup(midpoint);
+          }
+        }, 180);
+      }
     }
+
+    state.selectionSource = null;
 
     focusMapOnSelection();
     writeStoredLastGeo();
@@ -162,6 +168,81 @@
       }
     `;
     document.head.appendChild(style);
+  }
+
+  function injectLayoutTweaksStyles() {
+    if (state.layoutStyleInjected) return;
+    state.layoutStyleInjected = true;
+
+    const style = document.createElement('style');
+    style.id = 'steula-layout-tweaks-style';
+    style.textContent = `
+      .steula-left-scroll {
+        max-height: calc(100vh - 24px) !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        padding-right: 8px;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function getCommonAncestor(first, second) {
+    if (!first || !second) return null;
+
+    const visited = new Set();
+    let node = first;
+    while (node) {
+      visited.add(node);
+      node = node.parentElement;
+    }
+
+    node = second;
+    while (node) {
+      if (visited.has(node)) return node;
+      node = node.parentElement;
+    }
+
+    return null;
+  }
+
+  function setupLeftMenuScroll() {
+    const cepInput = document.querySelector('#cep');
+    const csvInput = document.querySelector('input[type="file"][accept*=".csv"]');
+
+    let panel = getCommonAncestor(cepInput, csvInput);
+
+    if (!panel && cepInput && cepInput.closest) {
+      panel = cepInput.closest('div.w-full.max-w-md.space-y-4');
+    }
+
+    if (!panel || !(panel instanceof HTMLElement)) return;
+    panel.classList.add('steula-left-scroll');
+  }
+
+  function hideCoverageSection() {
+    const textNodes = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, p, span, th, td'));
+
+    const coverageNode = textNodes.find((node) => {
+      const text = normalizeText(node.textContent || '');
+      return (
+        text.includes('tabela de cobertura') ||
+        text === 'cobertura' ||
+        text.includes('cobertura de representantes')
+      );
+    });
+
+    if (!coverageNode || !(coverageNode instanceof HTMLElement)) return;
+
+    const container =
+      coverageNode.closest('section, article, .card, [role="region"], div[class*="shadow"], div[class*="border"]') ||
+      coverageNode.closest('div');
+
+    if (container && container instanceof HTMLElement) {
+      container.style.display = 'none';
+    }
   }
 
   function markerName(marker) {
@@ -321,6 +402,7 @@
           setRepresentativeFilterByName(name);
           state.selectedName = name;
         }
+        state.selectionSource = 'marker';
         state.selectedLatLng = layer.getLatLng();
         drawSelection();
       });
@@ -367,6 +449,7 @@
 
     setRepresentativeFilterByName(name);
     state.selectedName = name;
+    state.selectionSource = 'list';
     state.selectedLatLng = marker.getLatLng();
     drawSelection();
   }
@@ -504,6 +587,9 @@
     installLeafletMapCapture();
     hookMarkerClicks();
     injectClickableCursorStyles();
+    injectLayoutTweaksStyles();
+    setupLeftMenuScroll();
+    hideCoverageSection();
     setupCsvPersistence();
     tryRestoreCsv();
     tryRestoreLastGeocode();
