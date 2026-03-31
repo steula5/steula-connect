@@ -34,7 +34,53 @@ export async function getCoordenatesByCEP(cep: string): Promise<{ lat: number; l
       return null;
     }
 
-    // Strategy 1: Open-Meteo (more reliable in browser due CORS compatibility)
+    // Strategy 1: Nominatim with bairro + localidade + estado
+    try {
+      const nominatimQuery = `${addressData.bairro}, ${addressData.localidade}, ${addressData.uf}, Brazil`;
+      const nominatimResponse = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(nominatimQuery)}&limit=1`,
+        { headers: { 'User-Agent': 'Steula-App' } }
+      );
+      const nominatimData = await nominatimResponse.json();
+      
+      if (nominatimData && nominatimData.length > 0) {
+        const result = nominatimData[0];
+        const coords = {
+          lat: parseFloat(result.lat),
+          lng: parseFloat(result.lon),
+        };
+        console.log(`✓ Geocoding encontrado (Nominatim - 1): ${nominatimQuery}`, coords);
+        cepCache[cleanCEP] = coords;
+        return coords;
+      }
+    } catch (err) {
+      console.warn('Nominatim Strategy 1 falhou:', err);
+    }
+
+    // Strategy 2: Nominatim with localidade + estado only
+    try {
+      const nominatimQuery = `${addressData.localidade}, ${addressData.uf}, Brazil`;
+      const nominatimResponse = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(nominatimQuery)}&limit=1`,
+        { headers: { 'User-Agent': 'Steula-App' } }
+      );
+      const nominatimData = await nominatimResponse.json();
+      
+      if (nominatimData && nominatimData.length > 0) {
+        const result = nominatimData[0];
+        const coords = {
+          lat: parseFloat(result.lat),
+          lng: parseFloat(result.lon),
+        };
+        console.log(`✓ Geocoding encontrado (Nominatim - 2): ${nominatimQuery}`, coords);
+        cepCache[cleanCEP] = coords;
+        return coords;
+      }
+    } catch (err) {
+      console.warn('Nominatim Strategy 2 falhou:', err);
+    }
+
+    // Strategy 3: Open-Meteo (more reliable in browser due CORS compatibility)
     try {
       const geocodingResponse = await fetch(
         `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
