@@ -345,6 +345,30 @@
     return found;
   }
 
+  function findNearestRepresentativeMarker(coords) {
+    const map = getMap();
+    if (!map || !coords) return null;
+
+    const target = window.L.latLng(coords.lat, coords.lng);
+    let nearest = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    map.eachLayer((layer) => {
+      if (!(layer instanceof window.L.Marker)) return;
+      const name = markerName(layer);
+      if (!name) return;
+
+      const markerLatLng = layer.getLatLng();
+      const distance = target.distanceTo(markerLatLng);
+      if (distance < nearestDistance) {
+        nearest = layer;
+        nearestDistance = distance;
+      }
+    });
+
+    return nearest;
+  }
+
   function normalizeText(value) {
     return (value || '')
       .normalize('NFD')
@@ -568,6 +592,20 @@
       const coords = await geocodeCep(input.value);
       state.lastCep = input.value;
       state.cepCoords = coords;
+
+      if (coords) {
+        const nearestMarker = findNearestRepresentativeMarker(coords);
+        if (nearestMarker) {
+          const nearestName = markerName(nearestMarker);
+          if (nearestName) {
+            state.selectedName = nearestName;
+            setRepresentativeFilterByName(nearestName);
+          }
+          state.selectionSource = 'list';
+          state.selectedLatLng = nearestMarker.getLatLng();
+        }
+      }
+
       drawSelection();
     });
   }
