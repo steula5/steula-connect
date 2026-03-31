@@ -59,6 +59,78 @@
     };
   }
 
+  function installOpenMeteoFallbackPatch() {
+    if (window.__steulaOpenMeteoFallbackInstalled) return;
+    if (typeof window.fetch !== 'function') return;
+
+    window.__steulaOpenMeteoFallbackInstalled = true;
+    const originalFetch = window.fetch.bind(window);
+
+    window.fetch = async function (input, init) {
+      const url = typeof input === 'string' ? input : input && input.url;
+
+      if (!url || !url.includes('geocoding-api.open-meteo.com/v1/search')) {
+        return originalFetch(input, init);
+      }
+
+      const response = await originalFetch(input, init);
+
+      try {
+        if (!response.ok) return response;
+
+        const parsedUrl = new URL(url, window.location.href);
+        if (parsedUrl.searchParams.get('countryCode') !== 'BR') return response;
+
+        const payload = await response.clone().json();
+        if (payload && Array.isArray(payload.results) && payload.results.length > 0) {
+          return response;
+        }
+
+        const city = (parsedUrl.searchParams.get('name') || '').trim();
+        const stateCode = (parsedUrl.searchParams.get('state') || '').trim();
+        if (!city || !stateCode) return response;
+
+        const nominatimQuery = `${city}, ${stateCode}, Brazil`;
+        const fallbackUrl =
+          'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
+          encodeURIComponent(nominatimQuery);
+
+        const fallbackResponse = await originalFetch(fallbackUrl, {
+          headers: { 'User-Agent': 'Steula-App' },
+        });
+        if (!fallbackResponse.ok) return response;
+
+        const fallbackData = await fallbackResponse.json();
+        if (!Array.isArray(fallbackData) || fallbackData.length === 0) return response;
+
+        const first = fallbackData[0];
+        const lat = parseFloat(first.lat);
+        const lng = parseFloat(first.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return response;
+
+        const patchedPayload = {
+          generationtime_ms: payload && payload.generationtime_ms ? payload.generationtime_ms : 0,
+          results: [
+            {
+              name: city,
+              admin1: stateCode,
+              country: 'Brazil',
+              latitude: lat,
+              longitude: lng,
+            },
+          ],
+        };
+
+        return new Response(JSON.stringify(patchedPayload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch {
+        return response;
+      }
+    };
+  }
+
   function getMap() {
     return state.map;
   }
@@ -643,6 +715,7 @@
 
   function boot() {
     installLeafletMapCapture();
+    installOpenMeteoFallbackPatch();
     hookMarkerClicks();
     injectClickableCursorStyles();
     injectLayoutTweaksStyles();
