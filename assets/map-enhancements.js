@@ -330,19 +330,54 @@
     }
   }
 
+  function markerCityState(marker) {
+    try {
+      const popup = marker.getPopup && marker.getPopup();
+      if (!popup) return null;
+      const content = popup.getContent && popup.getContent();
+      if (typeof content !== 'string') return null;
+
+      const m = content.match(/<span[^>]*>\s*([^<,]+)\s*,\s*([A-Z]{2})\s*<\/span>/i);
+      if (!m) return null;
+
+      return {
+        city: (m[1] || '').trim(),
+        state: (m[2] || '').trim().toUpperCase(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   function findMarkerByName(name) {
     const map = getMap();
     if (!map || !name) return null;
-    let found = null;
+
+    const matches = [];
     map.eachLayer((layer) => {
-      if (found) return;
       if (!(layer instanceof window.L.Marker)) return;
       const n = markerName(layer);
       if (n && n.toLowerCase() === name.toLowerCase()) {
-        found = layer;
+        matches.push(layer);
       }
     });
-    return found;
+
+    if (matches.length === 0) return null;
+    if (matches.length === 1 || !state.cepCoords) return matches[0];
+
+    const target = window.L.latLng(state.cepCoords.lat, state.cepCoords.lng);
+    let nearest = matches[0];
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (const marker of matches) {
+      const d = target.distanceTo(marker.getLatLng());
+      if (d < nearestDistance) {
+        nearest = marker;
+        nearestDistance = d;
+      }
+    }
+
+    return nearest;
   }
 
   function findNearestRepresentativeMarker(coords) {
@@ -350,6 +385,10 @@
     if (!map || !coords) return null;
 
     const target = window.L.latLng(coords.lat, coords.lng);
+    const cepMeta = state.cepMeta || null;
+    const sameCityCandidates = [];
+    const allCandidates = [];
+
     let nearest = null;
     let nearestDistance = Number.POSITIVE_INFINITY;
 
@@ -358,13 +397,32 @@
       const name = markerName(layer);
       if (!name) return;
 
+      allCandidates.push(layer);
+
+      if (cepMeta && cepMeta.city && cepMeta.state) {
+        const markerMeta = markerCityState(layer);
+        if (
+          markerMeta &&
+          normalizeText(markerMeta.city) === normalizeText(cepMeta.city) &&
+          markerMeta.state === String(cepMeta.state).toUpperCase()
+        ) {
+          sameCityCandidates.push(layer);
+        }
+      }
+    });
+
+    const candidates = sameCityCandidates.length > 0 ? sameCityCandidates : allCandidates;
+
+    for (const layer of candidates) {
+      if (!(layer instanceof window.L.Marker)) continue;
+
       const markerLatLng = layer.getLatLng();
       const distance = target.distanceTo(markerLatLng);
       if (distance < nearestDistance) {
         nearest = layer;
         nearestDistance = distance;
       }
-    });
+    }
 
     return nearest;
   }
@@ -533,7 +591,12 @@
         
         if (nominatim1 && nominatim1.length > 0) {
           console.log(`✓ Nominatim encontrou (Strategy 1): ${nominatim1[0].display_name}`);
-          return { lat: parseFloat(nominatim1[0].lat), lng: parseFloat(nominatim1[0].lon) };
+          return {
+            lat: parseFloat(nominatim1[0].lat),
+            lng: parseFloat(nominatim1[0].lon),
+            city: via.localidade,
+            state: via.uf,
+          };
         }
       } catch (err) {
         console.warn('Nominatim Strategy 1 falhou:', err);
@@ -550,7 +613,12 @@
         
         if (nominatim2 && nominatim2.length > 0) {
           console.log(`✓ Nominatim encontrou (Strategy 2): ${nominatim2[0].display_name}`);
-          return { lat: parseFloat(nominatim2[0].lat), lng: parseFloat(nominatim2[0].lon) };
+          return {
+            lat: parseFloat(nominatim2[0].lat),
+            lng: parseFloat(nominatim2[0].lon),
+            city: via.localidade,
+            state: via.uf,
+          };
         }
       } catch (err) {
         console.warn('Nominatim Strategy 2 falhou:', err);
@@ -567,7 +635,12 @@
         if (geo && geo.results && geo.results.length > 0) {
           const result = geo.results[0];
           console.log(`✓ Open-Meteo encontrou: ${result.name}, ${result.admin1}, ${result.country}`);
-          return { lat: result.latitude, lng: result.longitude };
+          return {
+            lat: result.latitude,
+            lng: result.longitude,
+            city: via.localidade,
+            state: via.uf,
+          };
         }
       } catch (err) {
         console.warn('Open-Meteo Strategy falhou:', err);
@@ -589,9 +662,14 @@
       const input = form.querySelector('#cep');
       if (!input) return;
 
+      if (!String(input.value || '').trim()) return;
+
       const coords = await geocodeCep(input.value);
       state.lastCep = input.value;
       state.cepCoords = coords;
+      state.cepMeta = coords
+        ? { city: coords.city || '', state: coords.state || '' }
+        : null;
 
       if (coords) {
         const nearestMarker = findNearestRepresentativeMarker(coords);
