@@ -353,16 +353,26 @@
     const map = getMap();
     if (!map || !name) return null;
 
+    const targetName = normalizeText(String(name));
     const matches = [];
     map.eachLayer((layer) => {
       if (!(layer instanceof window.L.Marker)) return;
       const n = markerName(layer);
-      if (n && n.toLowerCase() === name.toLowerCase()) {
+      if (!n) return;
+
+      const candidateName = normalizeText(String(n));
+      if (
+        candidateName === targetName ||
+        candidateName.includes(targetName) ||
+        targetName.includes(candidateName)
+      ) {
         matches.push(layer);
       }
     });
 
-    if (matches.length === 0) return null;
+    if (matches.length === 0) {
+      return state.cepCoords ? findNearestRepresentativeMarker(state.cepCoords) : null;
+    }
     if (matches.length === 1 || !state.cepCoords) return matches[0];
 
     const target = window.L.latLng(state.cepCoords.lat, state.cepCoords.lng);
