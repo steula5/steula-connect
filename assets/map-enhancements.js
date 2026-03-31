@@ -7,6 +7,7 @@
     cepCoords: null,
     selectedLatLng: null,
     selectedName: null,
+    selectedMarker: null,
     highlightLayer: null,
     lineLayer: null,
     cepMarkerLayer: null,
@@ -16,6 +17,7 @@
     csvRestoreAttempted: false,
     lastGeoRestoreAttempted: false,
     layoutStyleInjected: false,
+    selectionSyncTimer: null,
   };
 
   function readStoredLastGeo() {
@@ -148,9 +150,72 @@
     return `${Math.round(distanceKm)} km`;
   }
 
+  function findMarkerNearLatLng(latLng, maxDistanceMeters) {
+    const map = getMap();
+    if (!map || !latLng) return null;
+
+    const target = window.L.latLng(latLng.lat, latLng.lng);
+    const limit = Number.isFinite(maxDistanceMeters) ? maxDistanceMeters : 150;
+
+    let nearest = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    map.eachLayer((layer) => {
+      if (!(layer instanceof window.L.Marker)) return;
+      const name = markerName(layer);
+      if (!name) return;
+
+      const distance = target.distanceTo(layer.getLatLng());
+      if (distance <= limit && distance < nearestDistance) {
+        nearest = layer;
+        nearestDistance = distance;
+      }
+    });
+
+    return nearest;
+  }
+
+  function resolveSelectedMarker() {
+    const map = getMap();
+    if (!map) return null;
+
+    if (state.selectedMarker && map.hasLayer(state.selectedMarker)) {
+      return state.selectedMarker;
+    }
+
+    let marker = null;
+
+    if (state.selectedName) {
+      marker = findMarkerByName(state.selectedName);
+    }
+
+    if (!marker && state.selectedLatLng) {
+      marker = findMarkerNearLatLng(state.selectedLatLng, 300);
+    }
+
+    if (!marker && state.cepCoords) {
+      marker = findNearestRepresentativeMarker(state.cepCoords);
+    }
+
+    if (marker) {
+      state.selectedMarker = marker;
+      state.selectedLatLng = marker.getLatLng();
+      const meta = markerCityState(marker);
+      console.log('📍 Marcador selecionado no mapa:', {
+        nome: markerName(marker),
+        cidade: meta && meta.city ? meta.city : '',
+        uf: meta && meta.state ? meta.state : '',
+      });
+    }
+
+    return marker;
+  }
+
   function drawSelection() {
     const map = getMap();
     if (!map) return;
+
+    resolveSelectedMarker();
 
     if (state.cepMarkerLayer) {
       map.removeLayer(state.cepMarkerLayer);
@@ -225,6 +290,17 @@
     state.selectionSource = null;
 
     focusMapOnSelection();
+
+    if (state.selectedMarker && state.selectedMarker.openPopup) {
+      window.setTimeout(() => {
+        try {
+          state.selectedMarker.openPopup();
+        } catch {
+          // ignore popup timing errors
+        }
+      }, 120);
+    }
+
     writeStoredLastGeo();
   }
 
@@ -509,6 +585,15 @@
     if (!map) return;
 
     if (state.selectedLatLng && state.cepCoords) {
+      const selected = window.L.latLng(state.selectedLatLng.lat, state.selectedLatLng.lng);
+      const cep = window.L.latLng(state.cepCoords.lat, state.cepCoords.lng);
+      const distance = selected.distanceTo(cep);
+
+      if (distance < 80) {
+        map.setView(selected, Math.max(map.getZoom(), 12));
+        return;
+      }
+
       const bounds = window.L.latLngBounds([
         [state.selectedLatLng.lat, state.selectedLatLng.lng],
         [state.cepCoords.lat, state.cepCoords.lng],
@@ -520,6 +605,18 @@
     if (state.selectedLatLng) {
       map.setView(state.selectedLatLng, Math.max(map.getZoom(), 8));
     }
+  }
+
+  function schedulePostFilterSelectionSync() {
+    if (state.selectionSyncTimer) {
+      window.clearTimeout(state.selectionSyncTimer);
+    }
+
+    state.selectionSyncTimer = window.setTimeout(() => {
+      state.selectionSyncTimer = null;
+      resolveSelectedMarker();
+      drawSelection();
+    }, 260);
   }
 
   function setRepresentativeFilterByName(name) {
@@ -549,6 +646,7 @@
     select.dispatchEvent(new Event('input', { bubbles: true }));
     select.dispatchEvent(new Event('change', { bubbles: true }));
     syncRepresentativeFilterUi(name);
+    schedulePostFilterSelectionSync();
   }
 
   function hookMarkerClicks() {
@@ -567,6 +665,7 @@
           state.selectedName = name;
         }
         state.selectionSource = 'marker';
+        state.selectedMarker = layer;
         state.selectedLatLng = layer.getLatLng();
         drawSelection();
       });
@@ -690,6 +789,7 @@
             setRepresentativeFilterByName(nearestName);
           }
           state.selectionSource = 'list';
+          state.selectedMarker = nearestMarker;
           state.selectedLatLng = nearestMarker.getLatLng();
         }
       }
@@ -706,6 +806,7 @@
     setRepresentativeFilterByName(name);
     state.selectedName = name;
     state.selectionSource = 'list';
+    state.selectedMarker = marker;
     state.selectedLatLng = marker.getLatLng();
     drawSelection();
   }
@@ -727,6 +828,7 @@
     state.lastCep = stored.cep || '';
     state.cepCoords = stored.cepCoords || null;
     state.selectedName = stored.selectedName || null;
+    state.selectedMarker = null;
     state.selectedLatLng = stored.selectedLatLng || null;
 
     if (stored.cep) {
