@@ -418,7 +418,7 @@
       if (!via || via.erro) return null;
 
       const geo = await fetch(
-        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(via.localidade)}&state=${encodeURIComponent(via.uf)}&country=Brazil&count=1&language=pt&format=json`
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(via.localidade)}&state=${encodeURIComponent(via.uf)}&countryCode=BR&count=1&language=pt&format=json`
       ).then((r) => r.json());
 
       if (!geo || !geo.results || !geo.results.length) return null;

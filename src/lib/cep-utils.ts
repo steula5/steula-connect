@@ -39,7 +39,7 @@ export async function getCoordenatesByCEP(cep: string): Promise<{ lat: number; l
       const geocodingResponse = await fetch(
         `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
           addressData.localidade
-        )}&state=${encodeURIComponent(addressData.uf)}&country=Brazil&count=1&language=pt&format=json`
+        )}&state=${encodeURIComponent(addressData.uf)}&countryCode=BR&count=1&language=pt&format=json`
       );
       
       if (geocodingResponse.ok) {
