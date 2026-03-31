@@ -411,19 +411,41 @@
 
   async function geocodeCep(cepRaw) {
     const cep = (cepRaw || '').replace(/\D/g, '');
-    if (cep.length !== 8) return null;
+    if (cep.length !== 8) {
+      console.error('❌ CEP inválido (não tem 8 dígitos):', cepRaw);
+      return null;
+    }
 
     try {
+      console.log(`🔍 Buscando CEP: ${cep}`);
       const via = await fetch(`https://viacep.com.br/ws/${cep}/json/`).then((r) => r.json());
-      if (!via || via.erro) return null;
+      if (!via || via.erro) {
+        console.error('❌ CEP não encontrado no viaCEP:', cep);
+        return null;
+      }
+      
+      console.log(`✓ viaCEP retornou: ${via.localidade}, ${via.uf}`);
 
-      const geo = await fetch(
-        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(via.localidade)}&state=${encodeURIComponent(via.uf)}&countryCode=BR&count=1&language=pt&format=json`
-      ).then((r) => r.json());
-
-      if (!geo || !geo.results || !geo.results.length) return null;
-      return { lat: geo.results[0].latitude, lng: geo.results[0].longitude };
-    } catch {
+      const query = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(via.localidade)}&state=${encodeURIComponent(via.uf)}&countryCode=BR&count=1&language=pt&format=json`;
+      console.log(`🌐 Open-Meteo URL: ${query}`);
+      
+      const geo = await fetch(query).then((r) => r.json());
+      
+      if (!geo) {
+        console.error('❌ Open-Meteo retornou null');
+        return null;
+      }
+      
+      if (!geo.results || !geo.results.length) {
+        console.error('❌ Open-Meteo retornou array vazio para:', via.localidade, via.uf, 'Resposta:', geo);
+        return null;
+      }
+      
+      const result = geo.results[0];
+      console.log(`✓ Open-Meteo encontrou: ${result.name}, ${result.admin1}, ${result.country}`);
+      return { lat: result.latitude, lng: result.longitude };
+    } catch (err) {
+      console.error('❌ Erro ao geocodificar CEP:', err);
       return null;
     }
   }
