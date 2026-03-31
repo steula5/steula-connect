@@ -426,24 +426,60 @@
       
       console.log(`✓ viaCEP retornou: ${via.localidade}, ${via.uf}`);
 
-      const query = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(via.localidade)}&state=${encodeURIComponent(via.uf)}&countryCode=BR&count=1&language=pt&format=json`;
-      console.log(`🌐 Open-Meteo URL: ${query}`);
-      
-      const geo = await fetch(query).then((r) => r.json());
-      
-      if (!geo) {
-        console.error('❌ Open-Meteo retornou null');
-        return null;
+      // Strategy 1: Nominatim com localidade + estado + Brasil
+      try {
+        const nominatimQuery = `${via.bairro}, ${via.localidade}, ${via.uf}, Brazil`;
+        console.log(`🌐 Tentando Nominatim Strategy 1: ${nominatimQuery}`);
+        const nominatim1 = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(nominatimQuery)}&limit=1`,
+          { headers: { 'User-Agent': 'Steula-App' } }
+        ).then((r) => r.json());
+        
+        if (nominatim1 && nominatim1.length > 0) {
+          console.log(`✓ Nominatim encontrou (Strategy 1): ${nominatim1[0].display_name}`);
+          return { lat: parseFloat(nominatim1[0].lat), lng: parseFloat(nominatim1[0].lon) };
+        }
+      } catch (err) {
+        console.warn('Nominatim Strategy 1 falhou:', err);
       }
-      
-      if (!geo.results || !geo.results.length) {
-        console.error('❌ Open-Meteo retornou array vazio para:', via.localidade, via.uf, 'Resposta:', geo);
-        return null;
+
+      // Strategy 2: Nominatim com localidade + estado apenas
+      try {
+        const nominatimQuery2 = `${via.localidade}, ${via.uf}, Brazil`;
+        console.log(`🌐 Tentando Nominatim Strategy 2: ${nominatimQuery2}`);
+        const nominatim2 = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(nominatimQuery2)}&limit=1`,
+          { headers: { 'User-Agent': 'Steula-App' } }
+        ).then((r) => r.json());
+        
+        if (nominatim2 && nominatim2.length > 0) {
+          console.log(`✓ Nominatim encontrou (Strategy 2): ${nominatim2[0].display_name}`);
+          return { lat: parseFloat(nominatim2[0].lat), lng: parseFloat(nominatim2[0].lon) };
+        }
+      } catch (err) {
+        console.warn('Nominatim Strategy 2 falhou:', err);
       }
-      
-      const result = geo.results[0];
-      console.log(`✓ Open-Meteo encontrou: ${result.name}, ${result.admin1}, ${result.country}`);
-      return { lat: result.latitude, lng: result.longitude };
+
+      // Strategy 3: Open-Meteo com countryCode
+      try {
+        const openMeteoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(via.localidade)}&state=${encodeURIComponent(via.uf)}&countryCode=BR&count=1&language=pt&format=json`;
+        console.log(`🌐 Tentando Open-Meteo: ${openMeteoUrl}`);
+        
+        const geo = await fetch(openMeteoUrl).then((r) => r.json());
+        console.log(`Open-Meteo resposta:`, geo);
+        
+        if (geo && geo.results && geo.results.length > 0) {
+          const result = geo.results[0];
+          console.log(`✓ Open-Meteo encontrou: ${result.name}, ${result.admin1}, ${result.country}`);
+          return { lat: result.latitude, lng: result.longitude };
+        }
+      } catch (err) {
+        console.warn('Open-Meteo Strategy falhou:', err);
+      }
+
+      // Fallback failed
+      console.error('❌ Todas as estratégias falharam para:', via);
+      return null;
     } catch (err) {
       console.error('❌ Erro ao geocodificar CEP:', err);
       return null;
